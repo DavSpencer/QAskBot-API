@@ -21,17 +21,22 @@ export async function onRequestPost(context) {
   const token = TELEGRAM_BOT_TOKEN;
   const chatId = TELEGRAM_CHAT_ID;
 
+  console.log("[submit] incoming request");
+
   let data;
   try {
     data = await request.json();
+    console.log("[submit] parsed body, name:", data.name, "phone:", data.phone, "summary length:", (data.summary||"").length);
   } catch (e) {
+    console.log("[submit] JSON parse failed:", e.message);
     return json({ ok: false, error: "بدنه درخواست نامعتبر است." }, 400);
   }
 
   const chunks = buildMessageChunks(data);
+  console.log("[submit] sending", chunks.length, "chunk(s) to chat_id:", chatId);
 
   try {
-    for (const chunk of chunks) {
+    for (const [i, chunk] of chunks.entries()) {
       const tgRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -42,13 +47,18 @@ export async function onRequestPost(context) {
         }),
       });
 
+      console.log("[submit] chunk", i, "telegram status:", tgRes.status);
+
       if (!tgRes.ok) {
         const errBody = await tgRes.text();
+        console.log("[submit] telegram error body:", errBody);
         return json({ ok: false, error: `تلگرام خطا داد: ${errBody}` }, 502);
       }
     }
+    console.log("[submit] all chunks sent successfully");
     return json({ ok: true });
   } catch (err) {
+    console.log("[submit] fetch to telegram threw:", err.message);
     return json({ ok: false, error: err.message }, 500);
   }
 }

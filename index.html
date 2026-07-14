@@ -728,16 +728,19 @@ async function sendToTelegram(){
         summary: buildPlainText()
       })
     });
-    const data = await res.json().catch(()=>({ok:false}));
+    const data = await res.json().catch(()=>({ok:false, error:'پاسخ سرور قابل خواندن نبود (احتمالاً HTTP '+res.status+')'}));
+    console.log('[submit] status:', res.status, 'body:', data);
+
     if(res.ok && data.ok){
       dot.className = 'dot ok';
       text.textContent = 'اطلاعات با موفقیت برای تیم طراحی ارسال شد ✓';
     } else {
-      throw new Error(data.error || 'خطای نامشخص');
+      throw new Error(data.error || ('خطای نامشخص (HTTP '+res.status+')'));
     }
   } catch(e){
+    console.error('[submit] failed:', e);
     dot.className = 'dot fail';
-    text.textContent = 'ارسال خودکار ناموفق بود؛ می‌توانید دوباره تلاش کنید یا فایل را دانلود کنید.';
+    text.innerHTML = 'ارسال خودکار ناموفق بود: <b>'+escapeHtml(e.message)+'</b><br>می‌توانید دوباره تلاش کنید یا فایل را دانلود کنید.';
     resendBtn.style.display = 'inline-block';
   }
 }
