@@ -44,7 +44,11 @@ async function handleSubmit(request, env) {
     return json({ ok: false, error: "بدنه درخواست نامعتبر است." }, 400);
   }
 
-  const chunks = buildMessageChunks(data);
+  const ip = request.headers.get("CF-Connecting-IP") || "نامشخص";
+  const datetime = formatShamsiDateTime(new Date());
+  const meta = { ip, datetime };
+
+  const chunks = buildMessageChunks(data, meta);
 
   try {
     for (const chunk of chunks) {
@@ -63,9 +67,27 @@ async function handleSubmit(request, env) {
         return json({ ok: false, error: `تلگرام خطا داد: ${errBody}` }, 502);
       }
     }
-    return json({ ok: true });
+    return json({ ok: true, meta });
   } catch (err) {
     return json({ ok: false, error: err.message }, 500);
+  }
+}
+
+function formatShamsiDateTime(date) {
+  try {
+    const dtf = new Intl.DateTimeFormat("fa-IR-u-ca-persian", {
+      timeZone: "Asia/Tehran",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    });
+    return dtf.format(date);
+  } catch (e) {
+    return date.toISOString();
   }
 }
 
@@ -102,8 +124,16 @@ function buildBlocks(data) {
   return blocks;
 }
 
-function buildMessageChunks(data) {
+function buildMessageChunks(data, meta) {
   const blocks = buildBlocks(data);
+
+  if (meta) {
+    blocks.push(
+      `🕒 <b>تاریخ و ساعت تکمیل:</b>\n<blockquote>${esc(meta.datetime)}</blockquote>\n` +
+      `🌐 <b>آی‌پی:</b>\n<blockquote>${esc(meta.ip)}</blockquote>`
+    );
+  }
+
   const LIMIT = 3800; // Telegram limit is 4096, keep margin
   const chunks = [];
   let current = "";

@@ -243,12 +243,6 @@
   }
   .empty-mark{ color:#c9bda9; }
 
-  #copyBox{
-    width:100%; min-height:200px; margin-top:16px;
-    font-family:'Vazirmatn', monospace; font-size:13px; line-height:1.8;
-    border:1.5px dashed var(--line); border-radius:14px; padding:14px;
-    background:#fffaf5;
-  }
   .toast{
     position:fixed; bottom:64px; left:50%; transform:translateX(-50%);
     background:var(--accent); color:#fff;
@@ -365,7 +359,6 @@
       <button class="btn ghost" onclick="downloadSummary()">دانلود فایل متنی</button>
       <button class="btn ghost" onclick="editAgain()">بازگشت و ویرایش پاسخ‌ها</button>
     </div>
-    <textarea id="copyBox" readonly></textarea>
   </div>
 </section>
 
@@ -650,7 +643,6 @@ function showSummary(){
   }).join('');
 
   card.innerHTML = contactRows + sectionRows;
-  document.getElementById('copyBox').value = buildPlainText();
 
   window.scrollTo({top:0, behavior:'instant'});
   sendToTelegram();
@@ -670,6 +662,11 @@ function buildPlainText(){
     });
     out += '\n';
   });
+  if(state.server_meta){
+    out += '======================\n';
+    out += `تاریخ و ساعت تکمیل: ${state.server_meta.datetime}\n`;
+    out += `آی‌پی: ${state.server_meta.ip}\n`;
+  }
   return out;
 }
 
@@ -693,12 +690,18 @@ function buildStructuredData(){
 }
 
 function copySummary(){
-  const box = document.getElementById('copyBox');
-  box.select();
-  navigator.clipboard.writeText(box.value).then(()=>{
+  const text = buildPlainText();
+  navigator.clipboard.writeText(text).then(()=>{
     showToast();
   }).catch(()=>{
+    const tmp = document.createElement('textarea');
+    tmp.value = text;
+    tmp.style.position = 'fixed';
+    tmp.style.opacity = '0';
+    document.body.appendChild(tmp);
+    tmp.select();
     document.execCommand('copy');
+    document.body.removeChild(tmp);
     showToast();
   });
 }
@@ -748,8 +751,9 @@ async function sendToTelegram(){
     console.log('[submit] status:', res.status, 'body:', data);
 
     if(res.ok && data.ok){
+      state.server_meta = data.meta || null;
       dot.className = 'dot ok';
-      text.textContent = 'اطلاعات با موفقیت برای تیم طراحی ارسال شد ✓';
+      text.textContent = 'اطلاعات با موفقیت برای تیم طراحی ارسال شد ✓' + (data.meta ? ' — ' + data.meta.datetime : '');
     } else {
       throw new Error(data.error || ('خطای نامشخص (HTTP '+res.status+')'));
     }
