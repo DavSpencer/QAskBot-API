@@ -1,18 +1,20 @@
-// این فایل، خود Worker است. هم سایت استاتیک (پوشهٔ public) را سرو می‌کند
-// و هم مسیر /api/submit را مدیریت می‌کند تا پیام را به تلگرام بفرستد.
-// چون این Worker کد واقعی دارد (نه فقط فایل استاتیک)، متغیرهای محیطی
-// (TELEGRAM_BOT_TOKEN و TELEGRAM_CHAT_ID) به‌درستی روی آن قابل تعریف هستند.
+// این فایل، خود Worker است:
+// - سایت استاتیک (پوشهٔ public) را سرو می‌کند
+// - مسیر /api/submit را مدیریت می‌کند (دریافت فرم و ارسال به تلگرام)
+// - مسیر /telegram-webhook را مدیریت می‌کند (دستورهای ادمین: /adduser /deluser /list)
+//
+// مقادیر حساس (توکن ربات، شناسهٔ ادمین، سکرت webhook) دیگر داخل کد نیستند؛
+// باید در Cloudflare Dashboard → پروژهٔ Worker → Settings → Variables and Secrets تعریف شوند:
+//   TELEGRAM_BOT_TOKEN
+//   ADMIN_CHAT_ID
+//   TELEGRAM_WEBHOOK_SECRET
+// و یک KV Namespace با نام binding دقیقاً "USERS_KV" باید به Worker متصل شود (در wrangler.jsonc).
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
 };
-
-// توکن ربات و شناسه چت، مستقیم اینجا نوشته شده تا نیازی به
-// تنظیم متغیر محیطی در داشبورد Cloudflare نباشد.
-const TELEGRAM_BOT_TOKEN = "8866202792:AAHn54Z6CD3YekJkqzP0ly23btW54Zs8rlU";
-const TELEGRAM_CHAT_ID = "2071415040";
 
 export default {
   async fetch(request, env, ctx) {
@@ -28,14 +30,25 @@ export default {
       return new Response("Method not allowed", { status: 405, headers: CORS_HEADERS });
     }
 
+    if (url.pathname === "/telegram-webhook" && request.method === "POST") {
+      return handleTelegramWebhook(request, env);
+    }
+
     // هر مسیر دیگری: فایل استاتیک متناظر از پوشهٔ public سرو می‌شود
     return env.ASSETS.fetch(request);
   },
 };
 
+/* =========================================================
+   دریافت فرم و ارسال به همهٔ گیرنده‌ها (ادمین + کاربران لیست)
+========================================================= */
 async function handleSubmit(request, env) {
-  const token = TELEGRAM_BOT_TOKEN;
-  const chatId = TELEGRAM_CHAT_ID;
+  const token = env.TELEGRAM_BOT_TOKEN;
+  const adminId = env.ADMIN_CHAT_ID;
+
+  if (!token || !adminId) {
+    return json({ ok: false, error: "TELEGRAM_BOT_TOKEN یا ADMIN_CHAT_ID تنظیم نشده است." }, 500);
+  }
 
   let data;
   try {
@@ -47,29 +60,165 @@ async function handleSubmit(request, env) {
   const ip = request.headers.get("CF-Connecting-IP") || "نامشخص";
   const datetime = formatShamsiDateTime(new Date());
   const meta = { ip, datetime };
-
   const chunks = buildMessageChunks(data, meta);
 
-  try {
-    for (const chunk of chunks) {
-      const tgRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text: chunk,
-          parse_mode: "HTML",
-        }),
-      });
+  const users = await getUsers(env);
+  const recipients = [String(adminId), ...users.filter((u) => u !== String(adminId))];
 
-      if (!tgRes.ok) {
-        const errBody = await tgRes.text();
-        return json({ ok: false, error: `تلگرام خطا داد: ${errBody}` }, 502);
+  let adminOk = false;
+  const failedRecipients = [];
+
+  for (const rid of recipients) {
+    let recipientOk = true;
+    for (const chunk of chunks) {
+      const sent = await sendTelegramRaw(token, rid, chunk);
+      if (!sent.ok) {
+        recipientOk = false;
+        console.log("[submit] send failed for", rid, sent.error);
       }
     }
-    return json({ ok: true, meta });
+    if (rid === String(adminId)) adminOk = recipientOk;
+    if (!recipientOk) failedRecipients.push(rid);
+  }
+
+  if (!adminOk) {
+    return json({ ok: false, error: "ارسال پیام به ادمین ناموفق بود؛ توکن یا ADMIN_CHAT_ID را بررسی کنید." }, 502);
+  }
+
+  return json({ ok: true, meta, failedRecipients });
+}
+
+/* =========================================================
+   Webhook تلگرام: پاسخ به /start و دستورهای ادمین
+========================================================= */
+async function handleTelegramWebhook(request, env) {
+  // تایید اینکه درخواست واقعاً از طرف تلگرام است (نه یک درخواست جعلی)
+  const secretHeader = request.headers.get("X-Telegram-Bot-Api-Secret-Token");
+  if (!env.TELEGRAM_WEBHOOK_SECRET || secretHeader !== env.TELEGRAM_WEBHOOK_SECRET) {
+    return new Response("unauthorized", { status: 401 });
+  }
+
+  let update;
+  try {
+    update = await request.json();
+  } catch (e) {
+    return new Response("ok"); // همیشه ۲۰۰ برمی‌گردانیم تا تلگرام دوباره تلاش نکند
+  }
+
+  const msg = update.message;
+  if (!msg || !msg.text) return new Response("ok");
+
+  const fromId = String(msg.from.id);
+  const chatId = String(msg.chat.id);
+  const text = msg.text.trim();
+  const adminId = String(env.ADMIN_CHAT_ID || "");
+  const token = env.TELEGRAM_BOT_TOKEN;
+
+  if (text === "/start") {
+    await sendTelegramRaw(
+      token,
+      chatId,
+      `👋 سلام!\nشناسهٔ عددی شما: <code>${esc(fromId)}</code>\n\nاگر می‌خواهید نتیجهٔ پرسشنامه‌های تکمیل‌شده را دریافت کنید، این عدد را برای مدیر بفرستید تا شما را اضافه کند.`
+    );
+    return new Response("ok");
+  }
+
+  // از این به بعد فقط ادمین اجازهٔ دستور دارد
+  if (fromId !== adminId) {
+    if (text.startsWith("/")) {
+      await sendTelegramRaw(token, chatId, "⛔ شما اجازهٔ استفاده از این دستور را ندارید.");
+    }
+    return new Response("ok");
+  }
+
+  const parts = text.split(/\s+/);
+  const cmd = parts[0];
+
+  if (cmd === "/adduser") {
+    const targetId = parts[1];
+    if (!targetId || !/^-?\d+$/.test(targetId)) {
+      await sendTelegramRaw(token, chatId, "فرمت درست: <code>/adduser 123456789</code>\nشناسهٔ عددی را از خود شخص بگیرید (با فرستادن /start به ربات، شناسه‌اش را می‌بیند).");
+      return new Response("ok");
+    }
+    const users = await getUsers(env);
+    if (users.includes(targetId)) {
+      await sendTelegramRaw(token, chatId, `این کاربر (<code>${esc(targetId)}</code>) از قبل در لیست بود.`);
+    } else {
+      users.push(targetId);
+      await saveUsers(env, users);
+      await sendTelegramRaw(token, chatId, `✅ کاربر <code>${esc(targetId)}</code> اضافه شد و از این پس فرم‌های تکمیل‌شده برایش هم ارسال می‌شود.`);
+    }
+    return new Response("ok");
+  }
+
+  if (cmd === "/deluser") {
+    const targetId = parts[1];
+    const users = await getUsers(env);
+    const next = users.filter((u) => u !== targetId);
+    await saveUsers(env, next);
+    await sendTelegramRaw(
+      token,
+      chatId,
+      next.length < users.length
+        ? `🗑 کاربر <code>${esc(targetId)}</code> حذف شد.`
+        : `کاربری با شناسهٔ <code>${esc(targetId)}</code> در لیست نبود.`
+    );
+    return new Response("ok");
+  }
+
+  if (cmd === "/list") {
+    const users = await getUsers(env);
+    const lines = [`👑 ادمین: <code>${esc(adminId)}</code>`];
+    if (users.length) {
+      lines.push("", "👥 کاربران اضافه‌شده:");
+      users.forEach((u) => lines.push(`• <code>${esc(u)}</code>`));
+    } else {
+      lines.push("", "هیچ کاربر دیگری اضافه نشده.");
+    }
+    await sendTelegramRaw(token, chatId, lines.join("\n"));
+    return new Response("ok");
+  }
+
+  await sendTelegramRaw(
+    token,
+    chatId,
+    "دستورهای موجود:\n<code>/adduser [شناسه]</code> — افزودن گیرنده\n<code>/deluser [شناسه]</code> — حذف گیرنده\n<code>/list</code> — نمایش لیست گیرنده‌ها"
+  );
+  return new Response("ok");
+}
+
+/* =========================================================
+   کمکی‌ها
+========================================================= */
+async function getUsers(env) {
+  const raw = await env.USERS_KV.get("users");
+  if (!raw) return [];
+  try {
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+async function saveUsers(env, users) {
+  await env.USERS_KV.put("users", JSON.stringify(users));
+}
+
+async function sendTelegramRaw(token, chatId, text) {
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: "HTML" }),
+    });
+    if (!res.ok) {
+      const errBody = await res.text();
+      return { ok: false, error: errBody };
+    }
+    return { ok: true };
   } catch (err) {
-    return json({ ok: false, error: err.message }, 500);
+    return { ok: false, error: err.message };
   }
 }
 

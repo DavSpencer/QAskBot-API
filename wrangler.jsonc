@@ -4,6 +4,12 @@
   "main": "./src/index.js",
   "assets": {
     "directory": "./public",
-    "binding": "ASSETS"
-  }
+    "binding": "ASSETS",
+  },
+  "kv_namespaces": [
+    {
+      "binding": "USERS_KV",
+      "id": "9b9ff3340d6442a5bc509b7cbccb4bb4",
+    },
+  ],
 }
