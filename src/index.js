@@ -80,25 +80,43 @@ function esc(s) {
   return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-function buildMessageChunks(data) {
-  const lines = [];
-  lines.push("📋 <b>پرسشنامه جدید طراحی سایت</b>");
-  lines.push("");
-  lines.push(`👤 <b>نام:</b> ${esc(data.name)}`);
-  lines.push(`📞 <b>شماره تماس:</b> ${esc(data.phone)}`);
-  lines.push("");
-  lines.push(esc(data.summary));
+// هر «بلوک» یک واحد کامل و قابل‌بستن از تگ‌هاست (هرگز وسط یک بلوک بریده نمی‌شود)
+// تا وقتی پیام به چند تکه تقسیم می‌شود، تگ‌های HTML همیشه بسته و سالم بمانند.
+function buildBlocks(data) {
+  const blocks = [];
 
-  const full = lines.join("\n");
+  blocks.push("📋 <b>پرسشنامه جدید طراحی سایت</b>");
+
+  blocks.push(
+    `👤 <b>نام:</b>\n<blockquote>${esc(data.name || "—")}</blockquote>\n` +
+    `📞 <b>شماره تماس:</b>\n<blockquote>${esc(data.phone || "—")}</blockquote>`
+  );
+
+  (data.sections || []).forEach((sec) => {
+    const rows = (sec.rows || [])
+      .map((r) => `<b>${esc(r.q)}</b>\n<blockquote>${esc(r.a || "—")}</blockquote>`)
+      .join("\n\n");
+    blocks.push(`<b>▸ ${esc(sec.title)}</b>\n\n${rows}`);
+  });
+
+  return blocks;
+}
+
+function buildMessageChunks(data) {
+  const blocks = buildBlocks(data);
   const LIMIT = 3800; // Telegram limit is 4096, keep margin
   const chunks = [];
-  let rest = full;
-  while (rest.length > LIMIT) {
-    let cut = rest.lastIndexOf("\n", LIMIT);
-    if (cut <= 0) cut = LIMIT;
-    chunks.push(rest.slice(0, cut));
-    rest = rest.slice(cut);
+  let current = "";
+
+  for (const block of blocks) {
+    const candidate = current ? current + "\n\n" + block : block;
+    if (candidate.length > LIMIT && current) {
+      chunks.push(current);
+      current = block;
+    } else {
+      current = candidate;
+    }
   }
-  chunks.push(rest);
+  if (current) chunks.push(current);
   return chunks;
 }
