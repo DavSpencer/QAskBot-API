@@ -273,20 +273,16 @@
     to{ transform:scale(1); opacity:1; }
   }
   .modal-icon{ font-size:42px; margin-bottom:14px; line-height:1; }
+  .modal-spinner{
+    display:inline-block; width:36px; height:36px;
+    border:3px solid var(--accent-soft); border-top-color:var(--accent);
+    border-radius:50%; animation:spin .8s linear infinite;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
   .modal-title{ font-size:20px; font-weight:800; margin:0 0 10px; }
   .modal-text{ font-size:14.5px; color:var(--ink-soft); line-height:1.9; margin:0 0 24px; }
   .modal-actions{ display:flex; gap:10px; justify-content:center; flex-wrap:wrap; }
   .modal-actions .btn{ padding:12px 26px; font-size:14.5px; }
-
-  .send-status{
-    display:flex; align-items:center; justify-content:center; gap:8px;
-    font-size:14px; margin-top:18px; min-height:20px; text-align:center;
-  }
-  .dot{ width:8px; height:8px; border-radius:50%; background:var(--line); flex-shrink:0; }
-  .dot.sending{ background:var(--accent); animation:pulse 1s infinite; }
-  .dot.ok{ background:var(--ok); }
-  .dot.fail{ background:var(--danger); }
-  @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:.3;} }
 
   @media (max-width:600px){
     .card{ padding:24px 18px; }
@@ -303,7 +299,7 @@
 <section id="welcome">
   <div class="frame">
     <span class="eyebrow">پیش از شروع طراحی</span>
-    <h1 class="title">نقشه ساخت سایت<br>از زبان <span>خودتان</span></h1>
+    <h1 class="title">بیایید سایتی بسازیم<br>که واقعاً <span>مال شماست</span></h1>
     <p class="lead">
       برای طراحی سایتی که واقعاً به‌درد کسب‌وکارتان بخورد، به شناخت دقیقی از هدف، مخاطب و سلیقهٔ شما نیاز دارم.
       این پرسشنامه در چند بخش کوتاه، همان اطلاعاتی را از شما می‌گیرد که معمولاً در جلسات مشاوره می‌پرسم؛
@@ -312,7 +308,7 @@
     <div class="meta-row">
       <div class="meta-item"><span class="meta-num">۸</span><span class="meta-label">بخش</span></div>
       <div class="meta-item"><span class="meta-num">۱۰</span><span class="meta-label">دقیقه زمان</span></div>
-    <!--  <div class="meta-item"><span class="meta-num">۱</span><span class="meta-label">خروجی آماده ارسال</span></div> -->
+      <div class="meta-item"><span class="meta-num">۱</span><span class="meta-label">خروجی آماده ارسال</span></div>
     </div>
     <button class="btn" onclick="showGate()">شروع پرسشنامه</button>
   </div>
@@ -323,8 +319,8 @@
   <div class="frame">
     <div class="card">
       <span class="sec-tag" style="display:block; text-align:center; width:fit-content; margin:0 auto 14px;">قبل از شروع</span>
-      <h2 class="sec-title">اسم و شماره‌تان را وارد کنید</h2>
-      <p class="sec-desc">برای پیگیری پروژه و ارسال نتیجهٔ نهایی، این دو مورد ضروریست.</p>
+      <h2 class="sec-title">اسم و شماره‌تان را بگذارید</h2>
+      <p class="sec-desc">برای پیگیری پروژه و ارسال نتیجهٔ نهایی، اول این دو مورد را از شما می‌پرسم.</p>
 
       <div class="field">
         <label class="q">نام و نام خانوادگی<span class="req">*</span></label>
@@ -332,8 +328,8 @@
       </div>
       <div class="field">
         <label class="q">شماره تماس<span class="req">*</span></label>
-        <input type="tel" id="gate_phone" placeholder="09xxxxxxxxx">
-        <div class="error-msg" id="gateError">لطفاً نام و یک شمارهٔ تماس معتبر وارد کنید.</div>
+        <input type="tel" id="gate_phone" placeholder="09xxxxxxxxx" maxlength="11" inputmode="numeric" oninput="this.value=this.value.replace(/[^0-9]/g,'').slice(0,11);">
+        <div class="error-msg" id="gateError">لطفاً نام و یک شمارهٔ موبایل معتبر (مثل ۰۹۱۲۳۴۵۶۷۸۹، حداکثر ۱۱ رقم) وارد کنید.</div>
       </div>
       <button class="btn" style="width:100%;" onclick="proceedFromGate()">ادامه به پرسش‌ها</button>
     </div>
@@ -373,13 +369,7 @@
     </div>
     <div class="card" id="summaryCard"></div>
 
-    <div class="send-status" id="sendStatus">
-      <span class="dot sending" id="sendDot"></span>
-      <span id="sendText">در حال ارسال به تیم طراحی...</span>
-    </div>
-
     <div style="display:flex; gap:12px; justify-content:center; flex-wrap:wrap; margin-top:20px;">
-      <button class="btn secondary" id="resendBtn" onclick="sendToTelegram()" style="display:none;">تلاش دوباره برای ارسال</button>
       <button class="btn ghost" onclick="copySummary()">کپی متن خلاصه</button>
       <button class="btn ghost" onclick="downloadSummary()">دانلود فایل متنی</button>
       <button class="btn ghost" onclick="editAgain()">بازگشت و ویرایش پاسخ‌ها</button>
@@ -392,7 +382,7 @@
 <div class="modal-overlay" id="resultModal">
   <div class="modal-box">
     <div class="modal-icon" id="modalIcon">🙏</div>
-    <h3 class="modal-title" id="modalTitle">سپاس از شما!</h3>
+    <h3 class="modal-title" id="modalTitle">ممنون از شما!</h3>
     <p class="modal-text" id="modalText"></p>
     <div class="modal-actions" id="modalActions"></div>
   </div>
@@ -505,7 +495,9 @@ function proceedFromGate(){
   const phoneDigits = phone.replace(/\D/g,'');
   const err = document.getElementById('gateError');
 
-  if(!name || phoneDigits.length < 8){
+  const validPhone = /^0?9\d{9}$/.test(phoneDigits) && phoneDigits.length <= 11;
+
+  if(!name || !validPhone){
     err.classList.add('show');
     return;
   }
@@ -679,6 +671,7 @@ function showSummary(){
   card.innerHTML = contactRows + sectionRows;
 
   window.scrollTo({top:0, behavior:'instant'});
+  setModalState('sending');
   sendToTelegram();
 }
 
@@ -767,13 +760,7 @@ function editAgain(){
 
 /* ---------------- TELEGRAM SEND ---------------- */
 async function sendToTelegram(){
-  const dot = document.getElementById('sendDot');
-  const text = document.getElementById('sendText');
-  const resendBtn = document.getElementById('resendBtn');
-
-  dot.className = 'dot sending';
-  text.textContent = 'در حال ارسال به تیم طراحی...';
-  resendBtn.style.display = 'none';
+  setModalState('sending');
 
   try{
     const res = await fetch(SUBMIT_ENDPOINT, {
@@ -786,29 +773,29 @@ async function sendToTelegram(){
 
     if(res.ok && data.ok){
       state.server_meta = data.meta || null;
-      dot.className = 'dot ok';
-      text.textContent = 'اطلاعات با موفقیت برای تیم طراحی ارسال شد ✓' + (data.meta ? ' — ' + data.meta.datetime : '');
-      openResultModal(true);
+      setModalState('success');
     } else {
       throw new Error(data.error || ('خطای نامشخص (HTTP '+res.status+')'));
     }
   } catch(e){
     console.error('[submit] failed:', e);
-    dot.className = 'dot fail';
-    text.innerHTML = 'ارسال خودکار ناموفق بود: <b>'+escapeHtml(e.message)+'</b><br>می‌توانید دوباره تلاش کنید یا فایل را دانلود کنید.';
-    resendBtn.style.display = 'inline-block';
-    openResultModal(false);
+    setModalState('fail');
   }
 }
 
-function openResultModal(success){
+function setModalState(state_){
   const modal = document.getElementById('resultModal');
   const icon = document.getElementById('modalIcon');
   const title = document.getElementById('modalTitle');
   const text = document.getElementById('modalText');
   const actions = document.getElementById('modalActions');
 
-  if(success){
+  if(state_ === 'sending'){
+    icon.innerHTML = '<span class="modal-spinner"></span>';
+    title.textContent = 'در حال ارسال...';
+    text.textContent = 'اطلاعات شما در حال ارسال به تیم طراحی است، چند لحظه صبر کنید.';
+    actions.innerHTML = '';
+  } else if(state_ === 'success'){
     icon.textContent = '🙏';
     title.textContent = 'ممنون از شما!';
     text.textContent = 'پرسشنامه با موفقیت تکمیل شد. بعد از بررسی فرم، باهاتون تماس می‌گیرم.';
@@ -817,7 +804,7 @@ function openResultModal(success){
     icon.textContent = '⚠️';
     title.textContent = 'مشکلی پیش اومد';
     text.textContent = 'متاسفانه مشکلی در ارسال اطلاعات به وجود آمده، لطفاً دوباره تلاش کنید و یا برای گزارش مشکل با من تماس بگیرید.';
-    actions.innerHTML = '<button class="btn" onclick="closeResultModal(); sendToTelegram();">تلاش دوباره</button><button class="btn secondary" onclick="closeResultModal()">بستن</button>';
+    actions.innerHTML = '<button class="btn" onclick="sendToTelegram()">تلاش دوباره</button><button class="btn secondary" onclick="closeResultModal()">بستن</button>';
   }
   modal.classList.add('show');
 }
