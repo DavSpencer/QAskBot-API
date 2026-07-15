@@ -1,5 +1,5 @@
 {
-  "name": "site-cloudflare-questionnaire",
+  "name": "qaskbotapi",
   "compatibility_date": "2026-07-01",
   "main": "./src/index.js",
   "assets": {
