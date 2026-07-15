@@ -253,6 +253,31 @@
   }
   .toast.show{ opacity:1; }
 
+  .modal-overlay{
+    position:fixed; inset:0; z-index:100;
+    background:rgba(43,33,24,0.55);
+    display:none; align-items:center; justify-content:center;
+    padding:20px;
+  }
+  .modal-overlay.show{ display:flex; }
+  .modal-box{
+    background:var(--card); border-radius:24px;
+    padding:34px 28px; max-width:420px; width:100%;
+    text-align:center;
+    box-shadow:0 30px 70px rgba(0,0,0,0.28);
+    animation: modalPop .25s ease;
+    border:1px solid var(--line);
+  }
+  @keyframes modalPop{
+    from{ transform:scale(.92); opacity:0; }
+    to{ transform:scale(1); opacity:1; }
+  }
+  .modal-icon{ font-size:42px; margin-bottom:14px; line-height:1; }
+  .modal-title{ font-size:20px; font-weight:800; margin:0 0 10px; }
+  .modal-text{ font-size:14.5px; color:var(--ink-soft); line-height:1.9; margin:0 0 24px; }
+  .modal-actions{ display:flex; gap:10px; justify-content:center; flex-wrap:wrap; }
+  .modal-actions .btn{ padding:12px 26px; font-size:14.5px; }
+
   .send-status{
     display:flex; align-items:center; justify-content:center; gap:8px;
     font-size:14px; margin-top:18px; min-height:20px; text-align:center;
@@ -278,8 +303,7 @@
 <section id="welcome">
   <div class="frame">
     <span class="eyebrow">پیش از شروع طراحی</span>
-<h1 class="title">نقشهٔ ساخت سایت<br>
-از زبان<span> خودتان</span></h1>
+    <h1 class="title">بیایید سایتی بسازیم<br>که واقعاً <span>مال شماست</span></h1>
     <p class="lead">
       برای طراحی سایتی که واقعاً به‌درد کسب‌وکارتان بخورد، به شناخت دقیقی از هدف، مخاطب و سلیقهٔ شما نیاز دارم.
       این پرسشنامه در چند بخش کوتاه، همان اطلاعاتی را از شما می‌گیرد که معمولاً در جلسات مشاوره می‌پرسم؛
@@ -288,7 +312,7 @@
     <div class="meta-row">
       <div class="meta-item"><span class="meta-num">۸</span><span class="meta-label">بخش</span></div>
       <div class="meta-item"><span class="meta-num">۱۰</span><span class="meta-label">دقیقه زمان</span></div>
-      <!-- <div class="meta-item"><span class="meta-num">۱</span><span class="meta-label">خروجی آماده ارسال</span></div> -->
+      <div class="meta-item"><span class="meta-num">۱</span><span class="meta-label">خروجی آماده ارسال</span></div>
     </div>
     <button class="btn" onclick="showGate()">شروع پرسشنامه</button>
   </div>
@@ -300,7 +324,7 @@
     <div class="card">
       <span class="sec-tag" style="display:block; text-align:center; width:fit-content; margin:0 auto 14px;">قبل از شروع</span>
       <h2 class="sec-title">اسم و شماره‌تان را بگذارید</h2>
-      <p class="sec-desc">برای پیگیری پروژه و ارسال نتیجهٔ نهایی، شماره تماس و نام شما ضروری است.</p>
+      <p class="sec-desc">برای پیگیری پروژه و ارسال نتیجهٔ نهایی، اول این دو مورد را از شما می‌پرسم.</p>
 
       <div class="field">
         <label class="q">نام و نام خانوادگی<span class="req">*</span></label>
@@ -364,6 +388,15 @@
 </section>
 
 <div class="toast" id="toast">متن کپی شد ✓</div>
+
+<div class="modal-overlay" id="resultModal">
+  <div class="modal-box">
+    <div class="modal-icon" id="modalIcon">🙏</div>
+    <h3 class="modal-title" id="modalTitle">ممنون از شما!</h3>
+    <p class="modal-text" id="modalText"></p>
+    <div class="modal-actions" id="modalActions"></div>
+  </div>
+</div>
 
 <footer class="site-footer">طراحی توسط <b>Sina.OR</b></footer>
 
@@ -755,6 +788,7 @@ async function sendToTelegram(){
       state.server_meta = data.meta || null;
       dot.className = 'dot ok';
       text.textContent = 'اطلاعات با موفقیت برای تیم طراحی ارسال شد ✓' + (data.meta ? ' — ' + data.meta.datetime : '');
+      openResultModal(true);
     } else {
       throw new Error(data.error || ('خطای نامشخص (HTTP '+res.status+')'));
     }
@@ -763,7 +797,33 @@ async function sendToTelegram(){
     dot.className = 'dot fail';
     text.innerHTML = 'ارسال خودکار ناموفق بود: <b>'+escapeHtml(e.message)+'</b><br>می‌توانید دوباره تلاش کنید یا فایل را دانلود کنید.';
     resendBtn.style.display = 'inline-block';
+    openResultModal(false);
   }
+}
+
+function openResultModal(success){
+  const modal = document.getElementById('resultModal');
+  const icon = document.getElementById('modalIcon');
+  const title = document.getElementById('modalTitle');
+  const text = document.getElementById('modalText');
+  const actions = document.getElementById('modalActions');
+
+  if(success){
+    icon.textContent = '🙏';
+    title.textContent = 'ممنون از شما!';
+    text.textContent = 'پرسشنامه با موفقیت تکمیل شد. بعد از بررسی فرم، باهاتون تماس می‌گیرم.';
+    actions.innerHTML = '<button class="btn" onclick="closeResultModal()">متوجه شدم</button>';
+  } else {
+    icon.textContent = '⚠️';
+    title.textContent = 'مشکلی پیش اومد';
+    text.textContent = 'متاسفانه مشکلی در ارسال اطلاعات به وجود آمده، لطفاً دوباره تلاش کنید و یا برای گزارش مشکل با من تماس بگیرید.';
+    actions.innerHTML = '<button class="btn" onclick="closeResultModal(); sendToTelegram();">تلاش دوباره</button><button class="btn secondary" onclick="closeResultModal()">بستن</button>';
+  }
+  modal.classList.add('show');
+}
+
+function closeResultModal(){
+  document.getElementById('resultModal').classList.remove('show');
 }
 </script>
 </body>
